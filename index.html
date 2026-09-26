@@ -31,7 +31,6 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(220, 180, 100, 0.15) inset;
             padding: 24px 20px 20px;
             color: #e9e6dd;
-            transition: all 0.2s;
         }
 
         .profile-area {
@@ -74,7 +73,6 @@
             font-size: 36px;
             color: #c9a85b;
             font-weight: 300;
-            user-select: none;
         }
 
         .id-area {
@@ -128,7 +126,6 @@
             font-size: 13px;
             cursor: pointer;
             transition: 0.15s;
-            white-space: nowrap;
             font-weight: 600;
         }
 
@@ -157,7 +154,6 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            letter-spacing: 0.5px;
         }
 
         .save-bar button:hover {
@@ -188,11 +184,6 @@
             word-break: break-word;
         }
 
-        .story-text .speaker {
-            color: #c9a85b;
-            font-weight: 700;
-        }
-
         .choices-container {
             display: flex;
             flex-direction: column;
@@ -214,8 +205,6 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            letter-spacing: 0.2px;
-            line-height: 1.4;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
         }
 
@@ -224,6 +213,10 @@
             border-color: #c9a85b;
             transform: translateY(-2px);
             box-shadow: 0 10px 16px -6px rgba(201, 168, 91, 0.3);
+        }
+
+        .choice-btn:active {
+            transform: scale(0.98);
         }
 
         .choice-btn .choice-icon {
@@ -258,15 +251,6 @@
             letter-spacing: 1px;
         }
 
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #c9a85b;
-            border-radius: 4px;
-        }
-
         .hidden {
             display: none !important;
         }
@@ -283,7 +267,6 @@
             border-radius: 40px;
             font-size: 12px;
             cursor: pointer;
-            margin-left: auto;
             transition: 0.15s;
         }
 
@@ -297,9 +280,38 @@
             color: #6b6f7c;
             margin-left: 4px;
         }
+
+        .sound-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 100;
+            background: #252b37;
+            border: 1px solid #c9a85b;
+            color: #c9a85b;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        }
+
+        .sound-toggle:hover {
+            background: #c9a85b;
+            color: #14181f;
+        }
     </style>
 </head>
 <body>
+
+<!-- 音效开关 -->
+<div class="sound-toggle" id="soundToggle" title="开启/关闭音效">🔊</div>
+
 <div class="game-wrapper" id="gameWrapper">
     <div class="profile-area">
         <div class="avatar-box" id="avatarBox" title="点击上传头像">
@@ -319,7 +331,7 @@
     <div class="save-bar">
         <button id="saveGameBtn">💾 存档</button>
         <button id="loadGameBtn">📂 读档</button>
-        <button id="resetGameBtn" class="reset-btn" style="margin-left:0;">⟲ 重置</button>
+        <button id="resetGameBtn" class="reset-btn">⟲ 重置</button>
     </div>
 
     <div class="story-box">
@@ -336,6 +348,141 @@
 </div>
 
 <script>
+    // ==================== 音效系统 ====================
+    const AudioManager = {
+        ctx: null,
+        enabled: true,
+        bgmOsc: null,
+        bgmGain: null,
+
+        init() {
+            try {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                this.startBGM();
+            } catch(e) {
+                console.warn('AudioContext 初始化失败，音效不可用');
+                this.enabled = false;
+            }
+        },
+
+        // 背景音乐：低沉暗涌的合成氛围音
+        startBGM() {
+            if (!this.ctx || !this.enabled) return;
+            try {
+                // 低频底噪
+                const osc1 = this.ctx.createOscillator();
+                const gain1 = this.ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.value = 55;
+                gain1.gain.value = 0.04;
+                osc1.connect(gain1);
+                gain1.connect(this.ctx.destination);
+                osc1.start();
+
+                // 中频微动
+                const osc2 = this.ctx.createOscillator();
+                const gain2 = this.ctx.createGain();
+                osc2.type = 'triangle';
+                osc2.frequency.value = 82.5;
+                gain2.gain.value = 0.015;
+                osc2.connect(gain2);
+                gain2.connect(this.ctx.destination);
+                osc2.start();
+
+                // 缓慢LFO调节音量
+                const lfo = this.ctx.createOscillator();
+                const lfoGain = this.ctx.createGain();
+                lfo.frequency.value = 0.12;
+                lfoGain.gain.value = 0.02;
+                lfo.connect(lfoGain);
+                lfoGain.connect(gain1.gain);
+                lfo.start();
+
+                this.bgmOsc = { osc1, osc2, lfo, gain1, gain2 };
+            } catch(e) {
+                console.warn('BGM 启动失败', e);
+            }
+        },
+
+        stopBGM() {
+            if (this.bgmOsc) {
+                try {
+                    this.bgmOsc.osc1.stop();
+                    this.bgmOsc.osc2.stop();
+                    this.bgmOsc.lfo.stop();
+                } catch(e){}
+                this.bgmOsc = null;
+            }
+        },
+
+        // 播放点击音效（短促）
+        playClick() {
+            if (!this.ctx || !this.enabled) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            } catch(e){}
+        },
+
+        // 播放选择音效（更低沉）
+        playSelect() {
+            if (!this.ctx || !this.enabled) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(660, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            } catch(e){}
+        },
+
+        // 结局音效（戏剧性）
+        playEnding() {
+            if (!this.ctx || !this.enabled) return;
+            try {
+                const now = this.ctx.currentTime;
+                [220, 277, 330, 440].forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, now + i * 0.12);
+                    gain.gain.linearRampToValueAtTime(0.06, now + i * 0.12 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.6);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.12);
+                    osc.stop(now + i * 0.12 + 0.6);
+                });
+            } catch(e){}
+        },
+
+        toggle() {
+            this.enabled = !this.enabled;
+            if (this.enabled) {
+                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+                this.startBGM();
+            } else {
+                this.stopBGM();
+            }
+            return this.enabled;
+        }
+    };
+
     // ==================== 游戏核心数据 ====================
     const GameState = {
         playerId: '夜枭',
@@ -346,20 +493,11 @@
         trust: 0,
         history: [],
         isEnding: false,
-        endingName: '',
-        // 隐藏标记
-        flags: {
-            sawScar: false,
-            heardConfession: false,
-            foundFile: false,
-            kitchenMemory: false,
-        }
+        endingName: ''
     };
 
-    // ==================== 剧情节点数据（大幅扩充） ====================
+    // ==================== 剧情节点数据 ====================
     const storyNodes = {
-
-        // ==================== 起始章 ====================
         start: {
             id: 'start',
             text: `深夜，巴黎。你站在落地窗前，红酒杯映出霓虹。\n耳机里传来指令：“目标张泽禹，确认身份后清除。”\n\n你转过身，看见他靠在沙发上，衬衫领口微敞，嘴角挂着一丝若有若无的笑。\n他刚刚用你的厨房煮了一碗面，还煎了溏心蛋。\n\n“过来吃。”他抬眼，目光深邃。\n你摸向后腰的枪。`,
@@ -371,7 +509,7 @@
             ]
         },
 
-        // ---------- 厨房调查线 ----------
+        // ===== 厨房线 =====
         checkKitchen: {
             id: 'checkKitchen',
             text: `你快步走进厨房。灶台上还温着锅，旁边放着一份文件——\n是组织内部的密令复印件。\n上面写着：“夜枭，清除张泽禹。若失败，启动‘蜂鸟’协议。”\n你手指发凉。\n身后传来他的声音：“看到了？”`,
@@ -432,7 +570,7 @@
             ]
         },
 
-        // ==================== 核心对峙线 ====================
+        // ===== 核心线 =====
         sitClose: {
             id: 'sitClose',
             text: `你坐过去，接过筷子。他手指无意擦过你的手背，带着滚烫的温度。\n“你手好凉。”他轻笑，又靠近了一点，“任务很累？”\n你心里一惊——他怎么会知道任务？\n他却像没注意你的反应，把溏心蛋夹到你碗里。`,
@@ -526,7 +664,7 @@
             ]
         },
 
-        // ==================== 直接拔枪线 ====================
+        // ===== 拔枪线 =====
         drawGun: {
             id: 'drawGun',
             text: `枪口对准他眉心。他连眼睛都没眨。\n“保险没开。”他放下筷子，慢慢站起来。\n你低头一看——保险确实关着。\n在你分神的一秒，他已经近身，一手扣住你的手腕，另一只手按住你的腰。\n“宝贝，你舍不得。”他贴在你耳边说。`,
@@ -579,7 +717,7 @@
             ]
         },
 
-        // ==================== 身份询问线 ====================
+        // ===== 身份询问线 =====
         askIdentity: {
             id: 'askIdentity',
             text: `他歪头笑了笑：“你猜。”\n然后他解开衬衫纽扣，露出心口一道旧伤疤——那是你三年前执行任务时留下的。\n“那晚你放了我。”他声音沙哑，“从那天起，我就一直在找你。”`,
@@ -644,7 +782,7 @@
             ]
         },
 
-        // ==================== 其他重要分支 ====================
+        // ===== 其他分支 =====
         askTarget: {
             id: 'askTarget',
             text: `“我的任务？”他站起身，走到窗边。\n“是保护你。”\n你瞳孔骤缩——组织给你的命令是清除他，而他接到的却是保护你。\n“我们都被骗了。”他转身，目光灼灼。`,
@@ -701,8 +839,9 @@
         pushAndShoot: {
             id: 'pushAndShoot',
             text: `你推开他并扣动扳机——子弹擦过他手臂，嵌进墙壁。\n他难以置信地看着你。\n“你真的开枪……”他苦笑，拔出自己的枪。`,
-            choices: 
-                { text: '继续射击', next: 'ending_bad_blood', effects: { kill: 10, tension: 3, trust: -5 }, icon: '💥' },    { text: '停手，说对不起', next: 'ending_escape', effects: { kill: -3, trust: 5, tension: 2 }, icon: '😔' },
+            choices: [
+                { text: '继续射击', next: 'ending_bad_blood', effects: { kill: 10, tension: 3, trust: -5 }, icon: '💥' },
+                { text: '停手，说对不起', next: 'ending_escape', effects: { kill: -3, trust: 5, tension: 2 }, icon: '😔' },
                 { text: '转身跑向阳台', next: 'ending_alone', effects: { kill: 2, trust: -1, tension: 1 }, icon: '🏃' },
                 { text: '扔下枪，举起双手', next: 'surrender', effects: { kill: -5, trust: 8, tension: 2 }, icon: '🤲' }
             ]
@@ -740,40 +879,18 @@
             ]
         },
 
-        // ==================== 隐藏结局相关 ====================
-        hiddenPath: {
-            id: 'hiddenPath',
-            text: `你注意到他手腕内侧有一个极小的纹身——蜂鸟。\n“你是‘蜂鸟’的人？”\n他猛地抬头，眼神锐利。\n“你怎么知道蜂鸟？”\n空气瞬间凝固。`,
+        hideTable: {
+            id: 'hideTable',
+            text: `子弹打碎了花瓶。你躲在桌后，心跳如鼓。\n“出来吧，”他声音传来，“我不想伤你。”\n你握紧枪，汗湿了掌心。`,
             choices: [
-                { text: '说“我也是蜂鸟的”', next: 'ending_hummingbird', effects: { trust: 10, kill: 0, tension: 5 }, icon: '🐦' },
-                { text: '说“我查过你的底细”', next: 'ending_escape', effects: { trust: 5, kill: 2, tension: 3 }, icon: '🔎' },
-                { text: '开枪', next: 'ending_bad_blood', effects: { kill: 15, trust: -15, tension: 2 }, icon: '💥' }
+                { text: '突然现身开枪', next: 'ending_bad_blood', effects: { kill: 10, tension: 2, trust: -5 }, icon: '💥' },
+                { text: '扔出枪，举手走出', next: 'ending_true_love', effects: { trust: 12, kill: -5, tension: 2 }, icon: '🤲' },
+                { text: '从窗户翻出去', next: 'ending_alone', effects: { trust: 0, kill: 2, tension: 1 }, icon: '🪟' },
+                { text: '踢翻桌子冲向他', next: 'ending_bad_blood', effects: { kill: 8, tension: 4, trust: -3 }, icon: '🪑' }
             ]
         },
 
-        // 隐藏结局节点
-        ending_hummingbird: {
-            id: 'ending_hummingbird',
-            text: `【隐藏结局·蜂鸟归巢】\n你扯开自己的衣领，露出锁骨下方同样的蜂鸟纹身。\n他瞪大眼睛：“你……你也是初代蜂鸟？”\n“我是来清理叛徒的。”你苦笑，“但没想到叛徒是你。”\n“我不是叛徒。”他抓住你的手，“组织在用蜂鸟协议清洗所有初代成员。我们才是被清除的对象。”\n你们对视，同时明白了——\n组织早就抛弃了你们。\n\n天亮时，你们烧掉了那间公寓，并肩走入晨雾。\n从此，世界上少了两名杀手，多了一对亡命鸳鸯。\n——蜂鸟归巢，不再为任何人而战。`,
-            isEnding: true,
-            endingName: '🐦 蜂鸟归巢'
-        },
-
-        ending_sacrifice: {
-            id: 'ending_sacrifice',
-            text: `【结局·以我之命】\n你把他推进消防通道，自己留下来断后。\n“走！”你喊，“我欠你的，今天还清！”\n他回头看你最后一眼，那眼神里有太多东西。\n枪声响起时，你笑了。\n至少这一次，你保护了想保护的人。\n\n后来他活了下来，每年都会去巴黎那间公寓，在窗台上放一碗面。\n面里有两个溏心蛋。\n一个给你，一个给他。`,
-            isEnding: true,
-            endingName: '🕊️ 以我之命'
-        },
-
-        ending_third_party: {
-            id: 'ending_third_party',
-            text: `【结局·第三枪】\n你把枪转向窗外，扣动扳机。\n子弹打碎了对面楼顶的狙击镜——组织还派了第三个杀手。\n张泽禹瞬间明白，拉着你伏低。\n“他们从来就没打算让我们任何一个人活。”\n你们背靠背，枪口朝外。\n“合作？”他问。\n“合作。”你答。\n\n那一夜，你们杀穿了整条街。\n后来有人说，巴黎的杀手界有一对夫妇，从不接任务，只杀组织的人。\n他们的代号是——夜枭与泽禹。`,
-            isEnding: true,
-            endingName: '🚁 第三枪'
-        },
-
-        // ==================== 原有结局 ====================
+        // ==================== 结局 ====================
         ending_true_love: {
             id: 'ending_true_love',
             text: `【结局·真爱的子弹】\n你扔掉了枪，扑进他怀里。\n窗外警笛呼啸，组织的人包围了公寓，但你们谁也没有松手。\n“下辈子别做杀手了。”你轻声说。\n他吻了吻你的额头：“那做什么？”\n“做我一个人的张泽禹。”\n\n远处的爆炸映红了夜空，你们在火光中拥吻。\n也许明天还要逃亡，但此刻，你们只属于彼此。`,
@@ -802,28 +919,29 @@
             endingName: '🚶 独行'
         },
 
-        // ==================== 其他中继节点 ====================
-        hideTable: {
-            id: 'hideTable',
-            text: `子弹打碎了花瓶。你躲在桌后，心跳如鼓。\n“出来吧，”他声音传来，“我不想伤你。”\n你握紧枪，汗湿了掌心。`,
-            choices: [
-                { text: '突然现身开枪', next: 'ending_bad_blood', effects: { kill: 10, tension: 2, trust: -5 }, icon: '💥' },
-                { text: '扔出枪，举手走出', next: 'ending_true_love', effects: { trust: 12, kill: -5, tension: 2 }, icon: '🤲' },
-                { text: '从窗户翻出去', next: 'ending_alone', effects: { trust: 0, kill: 2, tension: 1 }, icon: '🪟' },
-                { text: '踢翻桌子冲向他', next: 'ending_bad_blood', effects: { kill: 8, tension: 4, trust: -3 }, icon: '🪑' }
-            ]
+        ending_sacrifice: {
+            id: 'ending_sacrifice',
+            text: `【结局·以我之命】\n你把他推进消防通道，自己留下来断后。\n“走！”你喊，“我欠你的，今天还清！”\n他回头看你最后一眼，那眼神里有太多东西。\n枪声响起时，你笑了。\n至少这一次，你保护了想保护的人。\n\n后来他活了下来，每年都会去巴黎那间公寓，在窗台上放一碗面。\n面里有两个溏心蛋。\n一个给你，一个给他。`,
+            isEnding: true,
+            endingName: '🕊️ 以我之命'
         },
 
-        // 确保所有引用的节点都存在
+        ending_third_party: {
+            id: 'ending_third_party',
+            text: `【结局·第三枪】\n你把枪转向窗外，扣动扳机。\n子弹打碎了对面楼顶的狙击镜——组织还派了第三个杀手。\n张泽禹瞬间明白，拉着你伏低。\n“他们从来就没打算让我们任何一个人活。”\n你们背靠背，枪口朝外。\n“合作？”他问。\n“合作。”你答。\n\n那一夜，你们杀穿了整条街。\n后来有人说，巴黎的杀手界有一对夫妇，从不接任务，只杀组织的人。\n他们的代号是——夜枭与泽禹。`,
+            isEnding: true,
+            endingName: '🚁 第三枪'
+        },
+
         ending_hummingbird: {
             id: 'ending_hummingbird',
             text: `【隐藏结局·蜂鸟归巢】\n你扯开自己的衣领，露出锁骨下方同样的蜂鸟纹身。\n他瞪大眼睛：“你……你也是初代蜂鸟？”\n“我是来清理叛徒的。”你苦笑，“但没想到叛徒是你。”\n“我不是叛徒。”他抓住你的手，“组织在用蜂鸟协议清洗所有初代成员。我们才是被清除的对象。”\n你们对视，同时明白了——\n组织早就抛弃了你们。\n\n天亮时，你们烧掉了那间公寓，并肩走入晨雾。\n从此，世界上少了两名杀手，多了一对亡命鸳鸯。\n——蜂鸟归巢，不再为任何人而战。`,
             isEnding: true,
             endingName: '🐦 蜂鸟归巢'
-        },
+        }
     };
 
-    // ==================== DOM 元素 ====================
+    // ==================== DOM ====================
     const storyTextEl = document.getElementById('storyText');
     const choicesContainer = document.getElementById('choicesContainer');
     const tensionDisplay = document.getElementById('tensionDisplay');
@@ -838,8 +956,9 @@
     const saveGameBtn = document.getElementById('saveGameBtn');
     const loadGameBtn = document.getElementById('loadGameBtn');
     const resetGameBtn = document.getElementById('resetGameBtn');
+    const soundToggle = document.getElementById('soundToggle');
 
-    // ==================== 辅助函数 ====================
+    // ==================== 辅助 ====================
     function updateStatusUI() {
         tensionDisplay.textContent = GameState.tension;
         killDisplay.textContent = GameState.kill;
@@ -862,7 +981,6 @@
         const node = storyNodes[nodeId];
         if (!node) {
             console.warn('节点不存在:', nodeId);
-            // 回退到start
             renderNode('start');
             return;
         }
@@ -873,6 +991,7 @@
         if (node.isEnding) {
             GameState.isEnding = true;
             GameState.endingName = node.endingName || '';
+            AudioManager.playEnding();
             clearChoices();
             const endingDiv = document.createElement('div');
             endingDiv.className = 'ending-tag';
@@ -882,7 +1001,10 @@
             const restartBtn = document.createElement('button');
             restartBtn.className = 'choice-btn';
             restartBtn.innerHTML = '<span class="choice-icon">🔄</span> 重新开始';
-            restartBtn.onclick = () => resetGame();
+            restartBtn.onclick = () => {
+                AudioManager.playClick();
+                resetGame();
+            };
             choicesContainer.appendChild(restartBtn);
             return;
         }
@@ -893,6 +1015,7 @@
             btn.className = 'choice-btn';
             btn.innerHTML = `<span class="choice-icon">${choice.icon || '▸'}</span> ${choice.text}`;
             btn.onclick = () => {
+                AudioManager.playSelect();
                 applyEffects(choice.effects);
                 GameState.history.push({ from: nodeId, choice: choice.text });
                 if (choice.next) renderNode(choice.next);
@@ -913,17 +1036,6 @@
         renderNode('start');
     }
 
-    function fullReset() {
-        resetGame();
-        GameState.playerId = '夜枭';
-        GameState.avatarUrl = null;
-        playerIdInput.value = '夜枭';
-        avatarImg.classList.add('hidden');
-        avatarPlaceholder.classList.remove('hidden');
-        avatarImg.src = '';
-        avatarPlaceholder.textContent = '👤';
-    }
-
     function saveGame() {
         const saveData = {
             playerId: GameState.playerId,
@@ -940,7 +1052,7 @@
             localStorage.setItem('zhangZeyu_otome_save', JSON.stringify(saveData));
             alert('✅ 存档成功！');
         } catch (e) {
-            alert('存档失败，存储空间不足或浏览器限制。');
+            alert('存档失败：' + e.message);
         }
     }
 
@@ -980,14 +1092,16 @@
         }
     }
 
-    // ==================== 事件绑定 ====================
+    // ==================== 事件 ====================
     saveIdBtn.addEventListener('click', () => {
+        AudioManager.playClick();
         const newId = playerIdInput.value.trim() || '夜枭';
         GameState.playerId = newId;
         playerIdInput.value = newId;
     });
 
     avatarBox.addEventListener('click', () => {
+        AudioManager.playClick();
         avatarUpload.click();
     });
 
@@ -1006,20 +1120,42 @@
         avatarUpload.value = '';
     });
 
-    saveGameBtn.addEventListener('click', saveGame);
-    loadGameBtn.addEventListener('click', loadGame);
+    saveGameBtn.addEventListener('click', () => {
+        AudioManager.playClick();
+        saveGame();
+    });
+
+    loadGameBtn.addEventListener('click', () => {
+        AudioManager.playClick();
+        loadGame();
+    });
 
     resetGameBtn.addEventListener('click', () => {
-        if (confirm('重置游戏进度？ID和头像不会改变。')) {
-            resetGame();
-        }
+        AudioManager.playClick();
+        if (confirm('重置游戏进度？ID和头像不会改变。')) resetGame();
     });
 
     playerIdInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') saveIdBtn.click();
     });
 
-    // 初始化
+    // 音效开关
+    soundToggle.addEventListener('click', () => {
+        const enabled = AudioManager.toggle();
+        soundToggle.textContent = enabled ? '🔊' : '🔇';
+        if (enabled) {
+            AudioManager.init();
+            AudioManager.playClick();
+        }
+    });
+
+    // 首次交互时初始化音频（浏览器要求用户手势才能播放）
+    document.body.addEventListener('click', function initAudioOnce() {
+        AudioManager.init();
+        document.body.removeEventListener('click', initAudioOnce);
+    }, { once: true });
+
+    // ==================== 初始化 ====================
     function initGame() {
         GameState.currentNodeId = 'start';
         GameState.tension = 0;
@@ -1037,9 +1173,6 @@
     }
 
     initGame();
-
 </script>
 </body>
 </html>
-```
-          
